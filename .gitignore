@@ -1,0 +1,22 @@
+cat > .gitignore <<'EOF'
+# Go
+controller/bin/
+controller/*.exe
+controller/*.test
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+EOF
