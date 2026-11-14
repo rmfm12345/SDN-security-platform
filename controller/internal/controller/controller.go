@@ -2,6 +2,7 @@ package controller
 
 import (
 	"log"
+	"sync"
 
 	of "github.com/netrack/openflow"
 	"github.com/netrack/openflow/ofp"
@@ -12,7 +13,9 @@ import (
 const listenAddress = ":6653"
 
 type Controller struct {
-	registry    *topology.SwitchRegistry
+	registry *topology.SwitchRegistry
+
+	mu          sync.RWMutex
 	connections map[string]uint64
 }
 
@@ -91,7 +94,9 @@ func (c *Controller) handleFeaturesReply(
 		return
 	}
 
+	c.mu.Lock()
 	c.connections[r.Addr.String()] = features.DatapathID
+	c.mu.Unlock()
 
 	sw := &topology.Switch{
 		DPID:  features.DatapathID,
@@ -160,13 +165,6 @@ func (c *Controller) handleEchoRequest(
 		)
 		return
 	}
-
-	log.Printf(
-		"ECHO_REQUEST received from %s: xid=%d data=%d bytes",
-		r.Addr,
-		r.Header.Transaction,
-		len(req.Data),
-	)
 
 	header := r.Header.Copy()
 	header.Type = of.TypeEchoReply
@@ -265,6 +263,9 @@ func (c *Controller) handleMultipartReply(
 }
 
 func (c *Controller) findSwitchDPID(addr string) (uint64, bool) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	dpid, ok := c.connections[addr]
 	return dpid, ok
 }
