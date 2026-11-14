@@ -1,12 +1,12 @@
 # SDN Network Security
 
-Controlador SDN escrito de raiz em **Go**, com foco em segurança de rede, testado numa rede emulada com **Mininet** e **Open vSwitch** sobre **OpenFlow 1.3**.
+An SDN controller written from scratch in **Go**, focused on network security, and tested on an emulated network built with **Mininet** and **Open vSwitch** over **OpenFlow 1.3**.
 
-## Arquitetura
+## Architecture
 
-**Plano de controlo:** cada switch liga-se ao controlador em `tcp:127.0.0.1:6653` (OpenFlow 1.3).
+**Control plane:** every switch connects to the controller at `tcp:127.0.0.1:6653` (OpenFlow 1.3).
 
-**Plano de dados:**
+**Data plane:**
 ```
            ┌────────────────────────┐
            │                        │
@@ -15,61 +15,56 @@ Controlador SDN escrito de raiz em **Go**, com foco em segurança de rede, testa
                       h2
 ```
 
-- 3 hosts (`h1`, `h2`, `h3`), cada um ligado a um switch.
-- 3 switches OVS ligados em triângulo (`s1–s2`, `s2–s3`, `s1–s3`), o que cria um ciclo na topologia.
-- Os switches estão em `fail-mode secure`, ou seja, só encaminham tráfego segundo os flows instalados pelo controlador.
+- 3 hosts (`h1`, `h2`, `h3`), each connected to one switch.
+- 3 OVS switches connected in a triangle (`s1–s2`, `s2–s3`, `s1–s3`), which creates a loop in the topology.
+- The switches run in `fail-mode secure`: they only forward traffic according to the flows installed by the controller.
 
-## Estrutura do projeto
+## Project structure
 
 ```
 .
-├── controller/                     # Controlador SDN (Go)
-│   ├── cmd/controller/main.go      # Ponto de entrada
+├── controller/                     # SDN controller (Go)
+│   ├── cmd/controller/main.go      # Entry point
 │   └── internal/
-│       ├── controller/             # Handlers OpenFlow
-│       └── topology/               # Registo de switches e portas
+│       ├── controller/             # OpenFlow handlers
+│       └── topology/               # Switch and port registry
 └── topology/
-    └── topology.py                 # Topologia Mininet
+    └── topology.py                 # Mininet topology
 ```
 
-## Estado atual
+## Current status
 
-Implementado:
-- [x] Handshake OpenFlow (`HELLO`, `FEATURES_REQUEST` / `FEATURES_REPLY`)
-- [x] Descoberta de portas (`MULTIPART_REQUEST` do tipo `PORT_DESC`)
-- [x] Registo em memória de switches e portas
+Implemented:
+- [x] OpenFlow handshake (`HELLO`, `FEATURES_REQUEST` / `FEATURES_REPLY`)
+- [x] Port discovery (`MULTIPART_REQUEST` of type `PORT_DESC`)
+- [x] In-memory registry of switches and ports
 - [x] Keepalive (`ECHO_REQUEST` / `ECHO_REPLY`)
 
-Próximos passos:
-- [ ] Proteger os mapas partilhados com `sync.Mutex` (concorrência)
-- [ ] Limpar o estado quando um switch se desliga
-- [ ] Handler para mensagens `ERROR`
-- [ ] Tratar `PACKET_IN` e instalar flows (encaminhamento)
-- [ ] Descoberta de links entre switches (LLDP)
-- [ ] Funcionalidades de segurança (firewall/ACLs, deteção de ataques, ...)
+Next steps:
+- [ ] Protect shared maps with `sync.Mutex` (concurrency)
+- [ ] Clean up state when a switch disconnects
+- [ ] Handler for `ERROR` messages
+- [ ] Handle `PACKET_IN` and install flows (forwarding)
+- [ ] Link discovery between switches (LLDP)
+- [ ] Security features (firewall/ACLs, attack detection, ...)
 
-## Instalação (Fedora)
+## Installation (Fedora)
 
-### Ferramentas base
+### Base tools
 ```bash
 sudo dnf install -y \
     git \
-    gcc \
-    gcc-c++ \
-    make \
-    autoconf \
-    automake \
-    libtool \
-    pkg-config \
     python3 \
-    python3-pip \
     iproute \
-    iproute-tc \
     iputils \
-    tcpdump \
-    wireshark \
-    iperf3 \
     net-tools
+```
+
+`net-tools` is required because Mininet uses `ifconfig` internally.
+
+Optional, for inspecting OpenFlow traffic:
+```bash
+sudo dnf install -y tcpdump wireshark
 ```
 
 ### Open vSwitch
@@ -80,51 +75,51 @@ sudo systemctl enable --now openvswitch
 
 ### Mininet
 ```bash
-pip install mininet
+sudo dnf install -y mininet
 ```
-> Nota: a instalação via `pip` pode causar problemas no Fedora.
+> Use the Fedora package rather than `pip install mininet`. The pip package does not ship the `mnexec` binary, which Mininet needs to run.
 
 ### Go
 ```bash
 sudo dnf install -y golang
 ```
 
-### Dependências Go
-As dependências (incluindo `github.com/netrack/openflow`) estão no `go.mod`. Para as descarregar:
+### Go dependencies
+Dependencies (including `github.com/netrack/openflow`) are listed in `go.mod`. To download them:
 ```bash
 cd controller
 go mod download
 ```
 
-## Execução
+## Running
 
-São precisos dois terminais, ambos a partir da raiz do projeto.
+You need two terminals, both starting from the project root.
 
-**Terminal 1: controlador**
+**Terminal 1: controller**
 ```bash
 cd controller && go run ./cmd/controller
 ```
 
-**Terminal 2: topologia Mininet**
+**Terminal 2: Mininet topology**
 ```bash
 sudo python3 topology/topology.py
 ```
 
-### Verificar
+### Verifying
 
-No prompt do Mininet:
+At the Mininet prompt:
 ```
 mininet> sh ovs-vsctl show
 ```
-Cada bridge (`s1`, `s2`, `s3`) deve mostrar `is_connected: true`.
+Each bridge (`s1`, `s2`, `s3`) should show `is_connected: true`.
 
-O controlador deve registar, para cada switch, `SWITCH CONNECTED` e a lista de portas.
+For each switch, the controller should log `SWITCH CONNECTED` followed by its list of ports.
 
-> Neste momento o `pingall` falha, e isso é esperado: o controlador ainda não instala flows.
+> `pingall` currently fails, and that is expected: the controller does not install any flows yet.
 
-### Limpar o ambiente
+### Cleaning up
 
-Se o Mininet terminar de forma inesperada:
+If Mininet exits unexpectedly:
 ```bash
 sudo mn -c
 ```
