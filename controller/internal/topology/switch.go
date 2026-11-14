@@ -1,3 +1,5 @@
+package topology
+
 type Port struct {
 	Number uint32
 	Name   string

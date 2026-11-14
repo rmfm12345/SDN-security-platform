@@ -4,41 +4,61 @@ from mininet.topo import Topo
 from mininet.net import Mininet
 from mininet.cli import CLI
 from mininet.log import setLogLevel
+from mininet.node import OVSSwitch
 
 
 class SecurityTopology(Topo):
-
     def build(self):
-        # Hosts
         h1 = self.addHost("h1")
         h2 = self.addHost("h2")
         h3 = self.addHost("h3")
 
-        # Switches
         s1 = self.addSwitch("s1")
         s2 = self.addSwitch("s2")
         s3 = self.addSwitch("s3")
 
-        # Host-to-switch links
         self.addLink(h1, s1)
         self.addLink(h2, s2)
         self.addLink(h3, s3)
 
-        # Switch-to-switch links
         self.addLink(s1, s2)
         self.addLink(s2, s3)
         self.addLink(s1, s3)
 
 
+def configure_switch(switch):
+    switch.cmd(
+        "ovs-vsctl set bridge %s protocols=OpenFlow13"
+        % switch.name
+    )
+
+    switch.cmd(
+        "ovs-vsctl set-fail-mode %s secure"
+        % switch.name
+    )
+
+    switch.cmd(
+        "ovs-vsctl set-controller %s tcp:127.0.0.1:6653"
+        % switch.name
+    )
+
+
 def main():
     topology = SecurityTopology()
 
-    net = Mininet(topo=topology, controller=None)
+    net = Mininet(
+        topo=topology,
+        switch=OVSSwitch,
+        controller=None,
+        autoSetMacs=True,
+    )
 
     net.start()
 
-    CLI(net)
+    for switch in net.switches:
+        configure_switch(switch)
 
+    CLI(net)
     net.stop()
 
 

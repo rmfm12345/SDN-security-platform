@@ -1,6 +1,6 @@
-cat > .gitignore <<'EOF'
 # Go
 controller/bin/
+controller/controller
 controller/*.exe
 controller/*.test
 
@@ -19,4 +19,3 @@ venv/
 
 # Logs
 *.log
-EOF
