@@ -37,3 +37,23 @@ func (r *SwitchRegistry) AddPort(dpid uint64, port Port) bool {
 	sw.Ports[port.Number] = port
 	return true
 }
+
+// Ports returns a copy of the ports of a switch.
+//
+// It returns a copy, not the internal map, so the caller can use it
+// without holding the lock (and without racing with AddPort).
+func (r *SwitchRegistry) Ports(dpid uint64) []Port {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	sw, ok := r.switches[dpid]
+	if !ok {
+		return nil
+	}
+
+	ports := make([]Port, 0, len(sw.Ports))
+	for _, p := range sw.Ports {
+		ports = append(ports, p)
+	}
+	return ports
+}

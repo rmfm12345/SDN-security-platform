@@ -2,14 +2,18 @@ package controller
 
 import (
 	"encoding/binary"
+	"fmt"
 	"log"
 	"net"
 	"strings"
+	"time"
 
 	"antrea.io/libOpenflow/common"
 	"antrea.io/libOpenflow/openflow15"
+	"antrea.io/libOpenflow/protocol"
 	"antrea.io/libOpenflow/util"
 
+	"github.com/rmfm12345/SDN_Network_Security/controller/internal/lldp"
 	"github.com/rmfm12345/SDN_Network_Security/controller/internal/topology"
 )
 
@@ -17,11 +21,13 @@ const listenAddress = ":6653"
 
 type Controller struct {
 	registry *topology.SwitchRegistry
+	links    *topology.LinkRegistry
 }
 
 func New() *Controller {
 	return &Controller{
 		registry: topology.NewSwitchRegistry(),
+		links:    topology.NewLinkRegistry(),
 	}
 }
 
@@ -71,10 +77,16 @@ func (c *Controller) handleConnection(conn net.Conn) {
 	}
 	sc.stream.Outbound <- hello
 
+	lldpTicker := time.NewTicker(lldpInterval)
+	defer lldpTicker.Stop()
+
 	for {
 		select {
 		case msg := <-sc.stream.Inbound:
 			c.dispatch(sc, msg)
+
+		case <-lldpTicker.C:
+			c.sendLLDP(sc)
 
 		case err := <-sc.stream.Error:
 			log.Printf(
@@ -106,6 +118,9 @@ func (c *Controller) dispatch(sc *switchConn, msg util.Message) {
 
 	case *openflow15.MultipartReply:
 		c.handleMultipartReply(sc, m)
+
+	case *openflow15.PacketIn:
+		c.handlePacketIn(sc, m)
 
 	default:
 		log.Printf("unhandled message %T from %s", msg, sc.addr)
@@ -149,6 +164,8 @@ func (c *Controller) handleFeaturesReply(
 	)
 
 	c.requestPortDescriptions(sc)
+	c.installTableMissFlow(sc)
+	c.installLLDPFlow(sc)
 }
 
 func (c *Controller) requestPortDescriptions(sc *switchConn) {
@@ -218,6 +235,7 @@ func (c *Controller) handleMultipartReply(
 			p.State,
 		)
 	}
+	c.sendLLDP(sc)
 }
 
 func portStateString(state uint32) string {
@@ -230,5 +248,90 @@ func portStateString(state uint32) string {
 		return "live"
 	default:
 		return "unknown"
+	}
+}
+
+// installTableMissFlow installs the lowest-priority flow, which matches
+// every packet that no other flow matches and sends it to the controller.
+func (c *Controller) installTableMissFlow(sc *switchConn) {
+	flow := openflow15.NewFlowMod()
+	flow.TableId = 0
+	flow.Priority = 0
+
+	actions := openflow15.NewInstrApplyActions()
+	if err := actions.AddAction(
+		openflow15.NewActionOutput(openflow15.P_CONTROLLER),
+		false,
+	); err != nil {
+		log.Printf("failed to build table-miss flow for %s: %v", sc.addr, err)
+		return
+	}
+	flow.AddInstruction(actions)
+
+	sc.stream.Outbound <- flow
+
+	log.Printf("TABLE-MISS flow installed on dpid=%016x", sc.dpid)
+}
+
+func (c *Controller) handlePacketIn(sc *switchConn, m *openflow15.PacketIn) {
+	inPort, ok := packetInPort(m)
+	if !ok {
+		log.Printf("PACKET_IN from %s without in_port", sc.addr)
+		return
+	}
+
+	raw, err := m.Data.MarshalBinary()
+	if err != nil {
+		log.Printf("failed to read PACKET_IN data from %s: %v", sc.addr, err)
+		return
+	}
+
+	if len(raw) >= 14 && binary.BigEndian.Uint16(raw[12:14]) == lldp.EtherType {
+		c.handleLLDP(sc, inPort, raw)
+		return
+	}
+
+	eth := new(protocol.Ethernet)
+	if err := eth.UnmarshalBinary(raw); err != nil {
+		log.Printf("failed to parse Ethernet frame from %s: %v", sc.addr, err)
+		return
+	}
+
+	log.Printf(
+		"PACKET_IN dpid=%016x in_port=%d src=%s dst=%s type=%s",
+		sc.dpid,
+		inPort,
+		eth.HWSrc,
+		eth.HWDst,
+		etherTypeName(eth.Ethertype),
+	)
+}
+
+func packetInPort(m *openflow15.PacketIn) (uint32, bool) {
+	for _, field := range m.Match.Fields {
+		if field.Class != openflow15.OXM_CLASS_OPENFLOW_BASIC ||
+			field.Field != openflow15.OXM_FIELD_IN_PORT {
+			continue
+		}
+
+		if v, ok := field.Value.(*openflow15.InPortField); ok {
+			return v.InPort, true
+		}
+	}
+	return 0, false
+}
+
+func etherTypeName(t uint16) string {
+	switch t {
+	case protocol.IPv4_MSG:
+		return "IPv4"
+	case protocol.IPv6_MSG:
+		return "IPv6"
+	case protocol.ARP_MSG:
+		return "ARP"
+	case protocol.LLDP_MSG:
+		return "LLDP"
+	default:
+		return fmt.Sprintf("0x%04x", t)
 	}
 }
