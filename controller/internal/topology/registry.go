@@ -57,3 +57,13 @@ func (r *SwitchRegistry) Ports(dpid uint64) []Port {
 	}
 	return ports
 }
+
+// RemovePort deltes a port from a switch
+func (r *SwitchRegistry) RemovePort(dpid uint64, portNo uint32) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if sw, ok := r.switches[dpid]; ok {
+		delete(sw.Ports, portNo)
+	}
+}

@@ -50,6 +50,10 @@ func (c *Controller) sendLLDP(sc *switchConn) {
 	}
 
 	for _, port := range c.registry.Ports(sc.dpid) {
+		if port.State != "live" {
+			continue
+		}
+
 		mac, err := net.ParseMAC(port.HWAddr)
 		if err != nil {
 			log.Printf("bad MAC %q on dpid=%016x port=%d", port.Name, sc.dpid, port.Number)
@@ -89,5 +93,25 @@ func (c *Controller) handleLLDP(sc *switchConn, inPort uint32, frame []byte) {
 			src.DPID, src.Port,
 			dst.DPID, dst.Port,
 		)
+	}
+}
+
+// A link is considered gone after missing this many LLDP rounds
+const LinkTimeout = 3 * lldpInterval
+
+// expireLinks runs forever, removing links whose LLDP stopped arriving,
+func (c *Controller) expireLinks() {
+	ticker := time.NewTicker(lldpInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		for _, l := range c.links.Expire(LinkTimeout) {
+			log.Printf(
+				"LINK REMOVED: %016x:%d -> %016x:%d (not seen for %s)",
+				l.Src.DPID, l.Src.Port,
+				l.Dst.DPID, l.Dst.Port,
+				time.Since(l.LastSeen).Round(time.Second),
+			)
+		}
 	}
 }

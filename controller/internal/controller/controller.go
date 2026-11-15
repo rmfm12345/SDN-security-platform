@@ -51,6 +51,8 @@ func (c *Controller) Start() {
 
 	log.Printf("Starting SDN controller on %s", listenAddress)
 
+	go c.expireLinks()
+
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -121,6 +123,9 @@ func (c *Controller) dispatch(sc *switchConn, msg util.Message) {
 
 	case *openflow15.PacketIn:
 		c.handlePacketIn(sc, m)
+
+	case *openflow15.PortStatus:
+		c.handlePortStatus(sc, m)
 
 	default:
 		log.Printf("unhandled message %T from %s", msg, sc.addr)
@@ -211,12 +216,7 @@ func (c *Controller) handleMultipartReply(
 			continue
 		}
 
-		p := topology.Port{
-			Number: port.PortNo,
-			Name:   strings.TrimRight(string(port.Name), "\x00"),
-			HWAddr: port.HWAddr.String(),
-			State:  portStateString(port.State),
-		}
+		p := toTopologyPort(port)
 
 		if !c.registry.AddPort(sc.dpid, p) {
 			log.Printf(
@@ -236,6 +236,16 @@ func (c *Controller) handleMultipartReply(
 		)
 	}
 	c.sendLLDP(sc)
+}
+
+// toTopologyPort converts an OpenFlow port description into our Port.
+func toTopologyPort(port *openflow15.Port) topology.Port {
+	return topology.Port{
+		Number: port.PortNo,
+		Name:   strings.TrimRight(string(port.Name), "\x00"),
+		HWAddr: port.HWAddr.String(),
+		State:  portStateString(port.State),
+	}
 }
 
 func portStateString(state uint32) string {

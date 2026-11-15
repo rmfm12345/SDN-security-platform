@@ -54,3 +54,35 @@ func (r *LinkRegistry) Links() []Link {
 	}
 	return links
 }
+
+// Expire removes every link not seen for longer than maxAge and
+// return the links it removed
+func (r *LinkRegistry) Expire(maxAge time.Duration) []Link {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var expired []Link
+	for src, l := range r.links {
+		if time.Since(l.LastSeen) > maxAge {
+			expired = append(expired, l)
+			delete(r.links, src)
+		}
+	}
+	return expired
+}
+
+// RemovePort removes every link that starts or ends at the given port
+// and return the links it removed
+func (r *LinkRegistry) RemovePort(end LinkEnd) []Link {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var removed []Link
+	for src, l := range r.links {
+		if l.Src == end || l.Dst == end {
+			removed = append(removed, l)
+			delete(r.links, src)
+		}
+	}
+	return removed
+}
