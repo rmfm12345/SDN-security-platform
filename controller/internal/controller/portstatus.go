@@ -48,3 +48,24 @@ func (c *Controller) removeLinks(end topology.LinkEnd) {
 		)
 	}
 }
+
+// removeSwitch forgets a switch that disconnected, together with its links
+func (c *Controller) removeSwitch(sc *switchConn) {
+	if sc.sw == nil {
+		return
+	}
+
+	if !c.registry.RemoveSwitch(sc.sw) {
+		log.Printf("dpid=%016x already reconnected, keeping it", sc.dpid)
+		return
+	}
+	log.Printf("SWITCH REMOVED: dpid=%016x", sc.dpid)
+
+	for _, l := range c.links.RemoveSwitch(sc.dpid) {
+		log.Printf(
+			"LINK REMOVED: %016x:%d -> %016x:%d (switch disconnected)",
+			l.Src.DPID, l.Src.Port,
+			l.Dst.DPID, l.Dst.Port,
+		)
+	}
+}

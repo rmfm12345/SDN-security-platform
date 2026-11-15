@@ -67,3 +67,18 @@ func (r *SwitchRegistry) RemovePort(dpid uint64, portNo uint32) {
 		delete(sw.Ports, portNo)
 	}
 }
+
+// RemoveSwitch removes sw from the registry, but only if it is still
+// the registered switch for its DPID. If the switch already reconnected,
+// the entry belongs to the new connection and is left alone
+// It reports whether the switch was removed
+func (r *SwitchRegistry) RemoveSwitch(sw *Switch) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if r.switches[sw.DPID] != sw {
+		return false
+	}
+	delete(r.switches, sw.DPID)
+	return true
+}

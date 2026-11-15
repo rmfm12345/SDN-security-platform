@@ -86,3 +86,19 @@ func (r *LinkRegistry) RemovePort(end LinkEnd) []Link {
 	}
 	return removed
 }
+
+// RemoveSwitch removes every link that starts or ends on the given
+// switch and return the links it removed
+func (r *LinkRegistry) RemoveSwitch(dpid uint64) []Link {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var removed []Link
+	for src, l := range r.links {
+		if l.Src.DPID == dpid || l.Dst.DPID == dpid {
+			removed = append(removed, l)
+			delete(r.links, src)
+		}
+	}
+	return removed
+}

@@ -41,6 +41,7 @@ type switchConn struct {
 	addr   string
 	stream *util.MessageStream
 	dpid   uint64
+	sw     *topology.Switch
 }
 
 func (c *Controller) Start() {
@@ -92,11 +93,12 @@ func (c *Controller) handleConnection(conn net.Conn) {
 
 		case err := <-sc.stream.Error:
 			log.Printf(
-				"SWITCH DISCONNECTED: addr=%s, dpid=%d, error=%v",
+				"SWITCH DISCONNECTED: addr=%s, dpid=%016x, error=%v",
 				sc.addr,
 				sc.dpid,
 				err,
 			)
+			c.removeSwitch(sc)
 			return
 		}
 	}
@@ -155,10 +157,11 @@ func (c *Controller) handleFeaturesReply(
 ) {
 	sc.dpid = binary.BigEndian.Uint64(m.DPID)
 
-	c.registry.AddSwitch(&topology.Switch{
+	sc.sw = &topology.Switch{
 		DPID:  sc.dpid,
 		Ports: make(map[uint32]topology.Port),
-	})
+	}
+	c.registry.AddSwitch(sc.sw)
 
 	log.Printf(
 		"SWITCH CONNECTED: addr=%s dpid=%016x tables=%d buffers=%d",
