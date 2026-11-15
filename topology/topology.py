@@ -28,7 +28,7 @@ class SecurityTopology(Topo):
 
 def configure_switch(switch):
     switch.cmd(
-        "ovs-vsctl set bridge %s protocols=OpenFlow13"
+        "ovs-vsctl set bridge %s protocols=OpenFlow15"
         % switch.name
     )
 
